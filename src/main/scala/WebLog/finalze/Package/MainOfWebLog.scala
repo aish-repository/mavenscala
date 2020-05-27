@@ -89,15 +89,24 @@ object MainOfWebLog {
             jsondf.printSchema();
             jsondf.createOrReplaceTempView("tv_usdataview")
             //
+
+            //email domain masking using regex
+            //removed special characters from phone number
+            //age is encrypted with sha2 256 bits
+            //position masking for the ip
             val finaldf = spark.sql(
               """
                     select concat(usd.username,day,month,yr,hr,mt,sec) as custid
 								    ,row_number() over(partition by usd.username order by yr
 								    ,month,day,hr,mt,sec) as version
-								    ,usd.page,usd.cell,usd.first,usd.age,usd.email,
+								    ,usd.page,regexp_replace(usd.cell,"[^0-9]","") as cell,usd.first,
+								    sha2(cast(cast(coalesce(usd.age,0) as String) as Binary),256) as age,
+								    regexp_replace(usd.email,"(?<=@)[^.]+(?=\\.)", "*****") as email,
 								    concat(usd.latitude,usd.longitude) as coordinates
 								    ,usd.uscity,usd.country,usd.state,usd.username
-								    ,cp.age as age,cp.profession as profession,wl.ip
+								    ,sha2(cast(cast(coalesce(cp.age,0) as String) as Binary),256) as age
+								    ,cp.profession as profession,
+								    concat(split(wl.ip,"\\.")[0],".XXX.XXX.",split(wl.ip,"\\.")[3]) as ip
 								    ,wl.dt,concat(wl.yr,'-',wl.time1,'-',wl.day) as fulldt,
 								    wl.verb,wl.page,wl.statuscd,ws.category,ws.desc
 								    ,case when wl.dt is null then 'new customer' else
@@ -116,6 +125,7 @@ object MainOfWebLog {
  (substr(regexp_replace(cell,'[()-]',''),0,5)=cp.id)
  left outer join tv_weblog wl on (wl.username=substr(regexp_replace(cell,'[()-]',''),0,5))
  left outer join tv_https ws on (wl.statuscd=ws.cd)""")
+
             finaldf.show(false)
 
             //finaldf.saveToEs("usdataidx/usdatatype")

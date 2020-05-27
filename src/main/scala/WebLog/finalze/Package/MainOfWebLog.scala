@@ -93,7 +93,7 @@ object MainOfWebLog {
             //email domain masking using regex
             //removed special characters from phone number
             //age is encrypted with sha2 256 bits
-            //position masking for the ip
+            //position masking for the ip address
             val finaldf = spark.sql(
               """
                     select concat(usd.username,day,month,yr,hr,mt,sec) as custid

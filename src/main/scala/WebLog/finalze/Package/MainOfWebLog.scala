@@ -2,7 +2,8 @@ package WebLog.finalze.Package
 
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.serialization.StringDeserializer
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
 import org.apache.spark.streaming.dstream.{DStream, InputDStream}
 import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
 import org.apache.spark.streaming.kafka010.KafkaUtils
@@ -21,9 +22,11 @@ object MainOfWebLog {
         .getOrCreate()
 
       val sc = spark.sparkContext
+      sc.setLogLevel("ERROR")
       sc.setCheckpointDir("/home/hduser/weblog/checkDir")
 
       val readInputFile = new ReadInputFile()
+// for udf
       val httpDF = readInputFile.ReadXMLFile("file:///home/hduser/weblog/http_status.xml","httpstatus")
       httpDF.cache()
       httpDF.rdd.checkpoint()
@@ -91,20 +94,23 @@ object MainOfWebLog {
             //
 
             //email domain masking using regex
+            //regexp_replace(usd.email,"(?<=@)[^.]+(?=\\.)", "*****")
             //removed special characters from phone number
+            //regexp_replace(usd.cell,"[^0-9]","")
             //age is encrypted with sha2 256 bits
+            //sha2(cast(cast(coalesce(usd.age,0) as String) as Binary),256)
             //position masking for the ip - final change
             val finaldf = spark.sql(
               """
                     select concat(usd.username,day,month,yr,hr,mt,sec) as custid
 								    ,row_number() over(partition by usd.username order by yr
 								    ,month,day,hr,mt,sec) as version
-								    ,usd.page,regexp_replace(usd.cell,"[^0-9]","") as cell,usd.first,
-								    sha2(cast(cast(coalesce(usd.age,0) as String) as Binary),256) as age,
-								    regexp_replace(usd.email,"(?<=@)[^.]+(?=\\.)", "*****") as email,
+								    ,usd.page,usd.cell as cell,usd.first,
+								    usd.age as age,
+								    usd.email as email,
 								    concat(usd.latitude,usd.longitude) as coordinates
 								    ,usd.uscity,usd.country,usd.state,usd.username
-								    ,sha2(cast(cast(coalesce(cp.age,0) as String) as Binary),256) as age
+								    ,sha2(cast(cast(coalesce(cp.age,0) as String) as Binary),256) as age_en
 								    ,cp.profession as profession,
 								    concat(split(wl.ip,"\\.")[0],".XXX.XXX.",split(wl.ip,"\\.")[3]) as ip
 								    ,wl.dt,concat(wl.yr,'-',wl.time1,'-',wl.day) as fulldt,
@@ -126,7 +132,12 @@ object MainOfWebLog {
  left outer join tv_weblog wl on (wl.username=substr(regexp_replace(cell,'[()-]',''),0,5))
  left outer join tv_https ws on (wl.statuscd=ws.cd)""")
 
-            finaldf.show(false)
+
+            val v_finaldf = finaldf.withColumn("email", UDFs.emailUDF(col("email")))
+              .withColumn("cell", UDFs.cellUDF(col("cell")))
+              .withColumn("cell", UDFs.posUDF(col("cell"),lit(5)))
+             .withColumn("age", UDFs.ageUDF(col("age")))
+            v_finaldf.show(false)
 
             //finaldf.saveToEs("usdataidx/usdatatype")
             println("data written to ES")

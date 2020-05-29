@@ -1,6 +1,5 @@
 package WebLog.finalze.Package
 
-import com.scdprocess.configParams
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 class ReadInputDB (implicit spark: SparkSession) extends configParams{
